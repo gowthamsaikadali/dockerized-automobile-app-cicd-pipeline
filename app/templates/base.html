@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}AutoForge{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}"/>
+</head>
+<body>
+  {% if current_user.is_authenticated %}
+  <nav class="navbar">
+    <div class="nav-brand">
+      <span class="brand-icon">&#9881;</span> AutoForge
+    </div>
+    <ul class="nav-links">
+      <li><a href="{{ url_for('dashboard.index') }}" class="{% if request.endpoint == 'dashboard.index' %}active{% endif %}">Dashboard</a></li>
+      <li><a href="{{ url_for('vehicles.index') }}" class="{% if request.blueprint == 'vehicles' %}active{% endif %}">Vehicles</a></li>
+      <li><a href="{{ url_for('orders.index') }}" class="{% if request.blueprint == 'orders' %}active{% endif %}">Orders</a></li>
+    </ul>
+    <div class="nav-user">
+      <span class="user-badge">{{ current_user.username }}{% if current_user.is_admin %} <span class="admin-tag">admin</span>{% endif %}</span>
+      <a href="{{ url_for('auth.logout') }}" class="btn btn-sm btn-outline">Logout</a>
+    </div>
+  </nav>
+  {% endif %}
+
+  <main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-messages">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

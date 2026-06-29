@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Place order — AutoForge{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Place order</h2>
+  <a href="{{ url_for('vehicles.index') }}" class="btn btn-outline">Back</a>
+</div>
+<div class="form-card">
+  <div class="vehicle-summary">
+    <h3>{{ vehicle.name }} {{ vehicle.model }} ({{ vehicle.year }})</h3>
+    <p>Category: <strong>{{ vehicle.category }}</strong></p>
+    <p>Price per unit: <strong>${{ "%.2f"|format(vehicle.price) }}</strong></p>
+    <p>Available stock: <strong>{{ vehicle.stock }}</strong></p>
+  </div>
+  <form method="POST">
+    {{ form.hidden_tag() }}
+    <div class="form-group">
+      {{ form.quantity.label }}
+      {{ form.quantity(class="form-control", min=1, max=vehicle.stock) }}
+      {% for err in form.quantity.errors %}<span class="form-error">{{ err }}</span>{% endfor %}
+    </div>
+    {{ form.submit(class="btn btn-primary") }}
+  </form>
+</div>
+{% endblock %}

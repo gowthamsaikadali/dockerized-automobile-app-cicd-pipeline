@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — AutoForge{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Dashboard</h2>
+  <span class="page-subtitle">Manufacturing overview</span>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-value">{{ total_vehicles }}</div>
+    <div class="stat-label">Vehicles in catalogue</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ total_orders }}</div>
+    <div class="stat-label">Total orders</div>
+  </div>
+  <div class="stat-card accent">
+    <div class="stat-value">{{ pending_orders }}</div>
+    <div class="stat-label">Pending orders</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-value">{{ total_users }}</div>
+    <div class="stat-label">Registered users</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Recent orders</h3>
+  {% if recent_orders %}
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Order ID</th>
+        <th>Customer</th>
+        <th>Vehicle</th>
+        <th>Total</th>
+        <th>Status</th>
+        <th>Date</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for order in recent_orders %}
+      <tr>
+        <td>#{{ order.id }}</td>
+        <td>{{ order.customer.username }}</td>
+        <td>{{ order.vehicle.name }} {{ order.vehicle.model }}</td>
+        <td>${{ "%.2f"|format(order.total_price) }}</td>
+        <td><span class="badge badge-{{ order.status }}">{{ order.status.replace('_',' ') }}</span></td>
+        <td>{{ order.created_at.strftime('%d %b %Y') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state">No orders yet.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Vehicles — AutoForge{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Vehicle catalogue</h2>
+  {% if current_user.is_admin %}
+  <a href="{{ url_for('vehicles.add') }}" class="btn btn-primary">+ Add vehicle</a>
+  {% endif %}
+</div>
+
+{% if vehicles %}
+<table class="data-table">
+  <thead>
+    <tr>
+      <th>Make</th>
+      <th>Model</th>
+      <th>Year</th>
+      <th>Category</th>
+      <th>Price</th>
+      <th>Stock</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for v in vehicles %}
+    <tr>
+      <td>{{ v.name }}</td>
+      <td>{{ v.model }}</td>
+      <td>{{ v.year }}</td>
+      <td><span class="badge badge-category">{{ v.category }}</span></td>
+      <td>${{ "%.2f"|format(v.price) }}</td>
+      <td>{{ v.stock }}</td>
+      <td class="actions">
+        <a href="{{ url_for('orders.place', vehicle_id=v.id) }}" class="btn btn-sm btn-primary">Order</a>
+        {% if current_user.is_admin %}
+        <a href="{{ url_for('vehicles.edit', id=v.id) }}" class="btn btn-sm btn-outline">Edit</a>
+        <form method="POST" action="{{ url_for('vehicles.delete', id=v.id) }}" style="display:inline" onsubmit="return confirm('Delete this vehicle?')">
+          {{ csrf_token() }}
+          <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty-state">No vehicles in catalogue yet.</p>
+{% endif %}
+{% endblock %}

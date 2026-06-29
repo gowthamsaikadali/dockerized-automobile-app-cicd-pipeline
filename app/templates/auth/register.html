@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Register — AutoForge{% endblock %}
+{% block content %}
+<div class="auth-wrapper">
+  <div class="auth-card">
+    <div class="auth-header">
+      <span class="brand-icon-lg">&#9881;</span>
+      <h1>Create account</h1>
+    </div>
+    <form method="POST">
+      {{ form.hidden_tag() }}
+      <div class="form-group">
+        {{ form.username.label }}
+        {{ form.username(class="form-control") }}
+        {% for err in form.username.errors %}<span class="form-error">{{ err }}</span>{% endfor %}
+      </div>
+      <div class="form-group">
+        {{ form.email.label }}
+        {{ form.email(class="form-control") }}
+        {% for err in form.email.errors %}<span class="form-error">{{ err }}</span>{% endfor %}
+      </div>
+      <div class="form-group">
+        {{ form.password.label }}
+        {{ form.password(class="form-control") }}
+        {% for err in form.password.errors %}<span class="form-error">{{ err }}</span>{% endfor %}
+      </div>
+      <div class="form-group">
+        {{ form.confirm.label }}
+        {{ form.confirm(class="form-control") }}
+        {% for err in form.confirm.errors %}<span class="form-error">{{ err }}</span>{% endfor %}
+      </div>
+      {{ form.submit(class="btn btn-primary btn-block") }}
+    </form>
+    <p class="auth-footer">Have an account? <a href="{{ url_for('auth.login') }}">Login</a></p>
+  </div>
+</div>
+{% endblock %}

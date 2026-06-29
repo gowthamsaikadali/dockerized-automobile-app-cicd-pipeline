@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Login — AutoForge{% endblock %}
+{% block content %}
+<div class="auth-wrapper">
+  <div class="auth-card">
+    <div class="auth-header">
+      <span class="brand-icon-lg">&#9881;</span>
+      <h1>AutoForge</h1>
+      <p>Automobile Manufacturing System</p>
+    </div>
+    <form method="POST">
+      {{ form.hidden_tag() }}
+      <div class="form-group">
+        {{ form.username.label }}
+        {{ form.username(class="form-control", placeholder="Enter username") }}
+        {% for err in form.username.errors %}<span class="form-error">{{ err }}</span>{% endfor %}
+      </div>
+      <div class="form-group">
+        {{ form.password.label }}
+        {{ form.password(class="form-control", placeholder="Enter password") }}
+        {% for err in form.password.errors %}<span class="form-error">{{ err }}</span>{% endfor %}
+      </div>
+      {{ form.submit(class="btn btn-primary btn-block") }}
+    </form>
+    <p class="auth-footer">No account? <a href="{{ url_for('auth.register') }}">Register</a></p>
+  </div>
+</div>
+{% endblock %}

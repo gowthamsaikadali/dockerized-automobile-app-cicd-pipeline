@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Update order #{{ order.id }} — AutoForge{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h2>Update order #{{ order.id }}</h2>
+  <a href="{{ url_for('orders.index') }}" class="btn btn-outline">Back</a>
+</div>
+<div class="form-card">
+  <div class="vehicle-summary">
+    <p>Customer: <strong>{{ order.customer.username }}</strong></p>
+    <p>Vehicle: <strong>{{ order.vehicle.name }} {{ order.vehicle.model }}</strong></p>
+    <p>Quantity: <strong>{{ order.quantity }}</strong></p>
+    <p>Total: <strong>${{ "%.2f"|format(order.total_price) }}</strong></p>
+  </div>
+  <form method="POST">
+    {{ form.hidden_tag() }}
+    <div class="form-group">
+      {{ form.status.label }}
+      {{ form.status(class="form-control") }}
+    </div>
+    {{ form.submit(class="btn btn-primary") }}
+  </form>
+</div>
+{% endblock %}
