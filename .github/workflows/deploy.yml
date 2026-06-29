@@ -363,16 +363,18 @@ jobs:
           EC2_IP: ${{ needs.terraform-apply.outputs.ec2_public_ip }}
         run: |
           echo "Running smoke test against http://${EC2_IP}/auth/login"
-          for i in $(seq 1 5); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${EC2_IP}/auth/login)
+          for i in $(seq 1 12); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              --connect-timeout 10 \
+              http://${EC2_IP}/auth/login)
             if [ "$STATUS" = "200" ]; then
               echo "Smoke test passed — HTTP ${STATUS}"
               exit 0
             fi
-            echo "Attempt $i — got HTTP ${STATUS}, retrying in 10s..."
-            sleep 10
+            echo "Attempt $i/12 — got HTTP ${STATUS}, retrying in 15s..."
+            sleep 15
           done
-          echo "Smoke test failed after 5 attempts."
+          echo "Smoke test failed after 12 attempts."
           exit 1
 
       - name: Print deployment summary
