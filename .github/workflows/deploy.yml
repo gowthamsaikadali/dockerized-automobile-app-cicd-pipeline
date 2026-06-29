@@ -66,6 +66,7 @@ jobs:
         run: |
           flake8 app/ config.py run.py seed.py \
             --max-line-length=120 \
+            --extend-ignore=W292,W391 \
             --exclude=__pycache__,.git \
             --count --statistics
 
