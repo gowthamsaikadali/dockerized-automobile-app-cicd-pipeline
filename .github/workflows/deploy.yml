@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      destroy_infra:
+        description: "Type 'destroy' to tear down ALL infrastructure (irreversible)"
+        required: false
+        default: ""
 
 env:
   AWS_REGION: ap-south-1
@@ -15,11 +20,60 @@ env:
 jobs:
 
 # ──────────────────────────────────────────────────────────────────────────────
+# JOB 0 — Terraform Destroy  (only when destroy_infra input == 'destroy')
+# ──────────────────────────────────────────────────────────────────────────────
+  terraform-destroy:
+    name: Terraform destroy
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.destroy_infra == 'destroy'
+    environment: production          # reuses the same manual-approval environment
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.0"
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform destroy
+        working-directory: terraform
+        run: |
+          terraform destroy -auto-approve \
+            -var="key_pair_name=${{ secrets.EC2_KEY_PAIR_NAME }}"
+        env:
+          TF_VAR_aws_region: ${{ env.AWS_REGION }}
+
+      - name: Print destroy summary
+        run: |
+          echo "================================================"
+          echo "  Infrastructure destroyed successfully!"
+          echo "  Region  : ${{ env.AWS_REGION }}"
+          echo "  Actor   : ${{ github.actor }}"
+          echo "  Time    : $(date -u)"
+          echo "================================================"
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # JOB 1 — Lint & Test
 # ──────────────────────────────────────────────────────────────────────────────
   lint-and-test:
     name: Lint & test
     runs-on: ubuntu-latest
+    if: github.event.inputs.destroy_infra != 'destroy'
 
     services:
       mysql:
@@ -93,7 +147,7 @@ jobs:
     name: Docker build
     runs-on: ubuntu-latest
     needs: lint-and-test
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event.inputs.destroy_infra != 'destroy'
 
     outputs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
@@ -139,7 +193,7 @@ jobs:
     name: Push to ECR
     runs-on: ubuntu-latest
     needs: docker-build
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event.inputs.destroy_infra != 'destroy'
 
     outputs:
       ecr_image: ${{ steps.push.outputs.ecr_image }}
@@ -190,7 +244,7 @@ jobs:
     name: Terraform apply
     runs-on: ubuntu-latest
     needs: push-to-ecr
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event.inputs.destroy_infra != 'destroy'
 
     outputs:
       ec2_public_ip: ${{ steps.tf_output.outputs.ec2_public_ip }}
@@ -253,7 +307,7 @@ jobs:
     name: Manual approval
     runs-on: ubuntu-latest
     needs: terraform-apply
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event.inputs.destroy_infra != 'destroy'
     environment: production
 
     steps:
@@ -272,7 +326,7 @@ jobs:
     name: Deploy to EC2
     runs-on: ubuntu-latest
     needs: [manual-approval, terraform-apply, push-to-ecr]
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && github.event.inputs.destroy_infra != 'destroy'
 
     steps:
       - name: Checkout code
