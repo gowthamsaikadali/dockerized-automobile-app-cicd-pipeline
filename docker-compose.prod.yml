@@ -9,10 +9,18 @@ services:
       MYSQL_DATABASE: ${DB_NAME}
       MYSQL_USER: ${DB_USER}
       MYSQL_PASSWORD: ${DB_PASSWORD}
+    command: >
+      --innodb-buffer-pool-size=128M
+      --max-connections=50
+      --performance-schema=OFF
     volumes:
       - automobile-db-data:/var/lib/mysql
     networks:
       - automobile-net
+    deploy:
+      resources:
+        limits:
+          memory: 400M
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
       interval: 10s
@@ -40,7 +48,8 @@ services:
     networks:
       - automobile-net
     command: >
-      sh -c "python seed.py && /app/venv/bin/gunicorn --bind 0.0.0.0:5000 --workers 1 --timeout 120 run:app"
+      sh -c "/app/venv/bin/python seed.py &&
+      /app/venv/bin/gunicorn --bind 0.0.0.0:5000 --workers 1 --timeout 120 run:app"
 
 volumes:
   automobile-db-data:

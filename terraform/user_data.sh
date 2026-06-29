@@ -5,6 +5,14 @@ set -e
 apt-get update -y
 apt-get upgrade -y
 
+# ── Swap (critical for t2.micro — 1GB RAM only) ────────────────────────────────
+fallocate -l 1G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+echo "Swap created."
+
 # ── Docker ─────────────────────────────────────────────────────────────────────
 apt-get install -y ca-certificates curl gnupg lsb-release unzip
 

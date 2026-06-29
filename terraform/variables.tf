@@ -17,7 +17,7 @@ variable "environment" {
 }
 
 variable "instance_type" {
-  description = "EC2 instance type"
+  description = "EC2 instance type — free tier eligible"
   type        = string
   default     = "t3.micro"
 }
@@ -31,11 +31,11 @@ variable "ami_id" {
 variable "key_pair_name" {
   description = "EC2 key pair name for SSH access"
   type        = string
-  default     = "automobile-key"
+  default     = "automobile-app-key"
 }
 
 variable "allowed_ssh_cidr" {
-  description = "CIDR block allowed to SSH into EC2 (restrict in production)"
+  description = "CIDR block allowed to SSH into EC2"
   type        = string
   default     = "0.0.0.0/0"
 }

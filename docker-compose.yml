@@ -38,11 +38,10 @@ services:
         condition: service_healthy
     networks:
       - automobile-net
-    volumes:
-      - .:/app
-      - /app/venv
     command: >
-      sh -c "python seed.py && /app/venv/bin/gunicorn --bind 0.0.0.0:5000 --workers 1 --reload run:app"
+      sh -c "/app/venv/bin/python seed.py &&
+      /app/venv/bin/gunicorn --bind 0.0.0.0:5000 --workers 1 --reload run:app"
+
 volumes:
   automobile-db-data:
     name: automobile-db-data

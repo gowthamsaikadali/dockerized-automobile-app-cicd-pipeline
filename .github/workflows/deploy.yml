@@ -66,7 +66,7 @@ jobs:
         run: |
           flake8 app/ config.py run.py seed.py \
             --max-line-length=120 \
-            --extend-ignore=W292,W391 \
+            --extend-ignore=W292,W391,W503 \
             --exclude=__pycache__,.git \
             --count --statistics
 
@@ -288,15 +288,16 @@ jobs:
       - name: Set up SSH key
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/automobile-key.pem
-          chmod 600 ~/.ssh/automobile-key.pem
-          ssh-keyscan -H ${{ needs.terraform-apply.outputs.ec2_public_ip }} >> ~/.ssh/known_hosts
+          echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/automobile-app-key.pem
+          chmod 600 ~/.ssh/automobile-app-key.pem
+          ssh-keyscan -H ${{ needs.terraform-apply.outputs.ec2_public_ip }} \
+            >> ~/.ssh/known_hosts
 
       - name: Wait for EC2 to be ready
         run: |
           echo "Waiting for EC2 SSH to be available..."
           for i in $(seq 1 20); do
-            if ssh -i ~/.ssh/automobile-key.pem \
+            if ssh -i ~/.ssh/automobile-app-key.pem \
                 -o StrictHostKeyChecking=no \
                 -o ConnectTimeout=10 \
                 ubuntu@${{ needs.terraform-apply.outputs.ec2_public_ip }} \
@@ -310,7 +311,7 @@ jobs:
 
       - name: Copy docker-compose.prod.yml to EC2
         run: |
-          scp -i ~/.ssh/automobile-key.pem \
+          scp -i ~/.ssh/automobile-app-key.pem \
             -o StrictHostKeyChecking=no \
             docker-compose.prod.yml \
             ubuntu@${{ needs.terraform-apply.outputs.ec2_public_ip }}:/opt/automobile-app/docker-compose.yml
@@ -321,20 +322,18 @@ jobs:
           ECR_IMAGE: ${{ needs.push-to-ecr.outputs.ecr_image }}
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
         run: |
-          ssh -i ~/.ssh/automobile-key.pem \
+          ssh -i ~/.ssh/automobile-app-key.pem \
             -o StrictHostKeyChecking=no \
             ubuntu@${EC2_IP} << ENDSSH
             set -e
 
-            # ECR login via instance role
             aws ecr get-login-password --region ${{ env.AWS_REGION }} \
               | docker login --username AWS --password-stdin \
                 ${AWS_ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
 
             cd /opt/automobile-app
 
-            # Write environment file
-            cat > .env << 'ENVEOF'
+            cat > .env << ENVEOF
           SECRET_KEY=${{ secrets.SECRET_KEY }}
           FLASK_ENV=production
           DB_USER=${{ secrets.DB_USER }}
@@ -346,14 +345,12 @@ jobs:
           ECR_IMAGE=${ECR_IMAGE}
           ENVEOF
 
-            # Pull latest image and restart
             docker pull ${ECR_IMAGE}
             docker compose down --remove-orphans || true
             docker compose up -d
 
-            # Wait for app to be healthy
-            echo "Waiting for app healthcheck..."
-            sleep 30
+            echo "Waiting for containers to be healthy..."
+            sleep 40
             docker compose ps
             echo "Deployment complete."
           ENDSSH

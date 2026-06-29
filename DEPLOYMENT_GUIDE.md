@@ -1,91 +1,216 @@
-# AutoForge — Complete Deployment Guide
+# AutoForge — Complete Deployment Guide (AWS Free Tier)
 ## Automobile Manufacturing App | Docker + ECR + Terraform + GitHub Actions
 
 ---
 
-## What You Are Deploying
+## What You Are Building
 
-A Flask web application containerised with Docker, stored in Amazon ECR,
-infrastructure provisioned by Terraform, deployed to EC2 via GitHub Actions.
+A real-world DevOps project that showcases:
+- A Flask web app (automobile manufacturing dashboard) running inside Docker containers
+- MySQL database also running as a container (no RDS — free tier friendly)
+- Docker images stored in Amazon ECR (private registry)
+- AWS infrastructure created automatically by Terraform
+- Fully automated CI/CD pipeline via GitHub Actions (6 jobs)
 
 ```
-GitHub push → CI/CD pipeline → Docker build → ECR push → Terraform → EC2 deploy
+You push code to GitHub
+       ↓
+GitHub Actions runs automatically
+       ↓
+Job 1: Lint + test your Python code
+Job 2: Build Docker image
+Job 3: Push image to Amazon ECR
+Job 4: Terraform creates EC2 on AWS
+Job 5: You approve the deployment (manual gate)
+Job 6: SSH into EC2, pull image, start containers
+       ↓
+App is live at http://YOUR_EC2_IP
 ```
-
-**Tech stack:** Python/Flask · MySQL 8 · Docker · Amazon ECR · EC2 · Terraform · GitHub Actions
 
 ---
 
-## Prerequisites (install these on your Windows machine)
+## Free Tier Resources Used
 
-| Tool | Download |
-|------|----------|
-| Git | https://git-scm.com/download/win |
-| AWS CLI v2 | https://aws.amazon.com/cli/ |
-| Terraform | https://developer.hashicorp.com/terraform/install |
-| VS Code (optional) | https://code.visualstudio.com |
+| AWS Resource     | Free Tier Limit          | What We Use      |
+|------------------|--------------------------|------------------|
+| EC2 t2.micro     | 750 hours/month          | 1 instance       |
+| EBS gp2 storage  | 30 GB/month              | 20 GB            |
+| ECR              | 500 MB/month free        | ~150 MB          |
+| S3               | 5 GB storage             | <1 MB (tfstate)  |
+| DynamoDB         | 25 GB + 25 WCU free      | <1 MB            |
 
-Verify installs in PowerShell:
+**Estimated cost: $0/month if within first 12 months of AWS account.**
+ECR has a small charge after 500MB — our 5-image policy keeps it under.
+
+---
+
+## Tools to Install on Your Windows Machine
+
+Install these before starting. Open each link, download, and install.
+
+### 1. Git
+Download: https://git-scm.com/download/win
+- During install: choose "Use Git from command line and also from 3rd-party software"
+- Everything else: keep defaults
+
+Verify in PowerShell:
 ```powershell
 git --version
+# Expected: git version 2.x.x
+```
+
+### 2. AWS CLI v2
+Download: https://aws.amazon.com/cli/
+- Download the `.msi` installer
+- Run it, keep all defaults
+
+Verify:
+```powershell
 aws --version
+# Expected: aws-cli/2.x.x Python/3.x.x Windows/...
+```
+
+### 3. Terraform
+Download: https://developer.hashicorp.com/terraform/install
+- Select Windows AMD64
+- Download the zip
+- Extract `terraform.exe`
+- Move it to `C:\terraform\`
+- Add `C:\terraform` to your Windows PATH:
+  - Search "Environment Variables" in Start
+  - System Properties → Environment Variables
+  - Under System Variables, find Path → Edit → New → type `C:\terraform`
+  - Click OK on all dialogs
+
+Verify (open a new PowerShell window):
+```powershell
 terraform --version
+# Expected: Terraform v1.x.x
 ```
 
 ---
 
-## PHASE 1 — AWS Account Setup (do this once, manually)
+## PHASE 1 — AWS Account Setup
+### (Do this once. Takes about 15 minutes.)
 
-### Step 1.1 — Create IAM user for GitHub Actions..................
+---
 
-1. Open AWS Console → IAM → Users → Create user
-2. Username: `github-actions-user`
-3. Select: **Attach policies directly**
-4. Attach these policies:
+### Step 1.1 — Log into AWS Console
+
+Go to: https://console.aws.amazon.com
+Sign in with your root account email and password.
+
+**Important:** In the top-right corner, make sure the region is set to:
+`Asia Pacific (Mumbai) — ap-south-1`
+
+Click the region dropdown and select Mumbai if it isn't already selected.
+
+---
+
+### Step 1.2 — Create an IAM User for GitHub Actions
+
+**Why?** GitHub Actions needs AWS credentials to push Docker images to ECR, run
+Terraform, and deploy to EC2. We create a dedicated IAM user for this — we never
+use our root account credentials in pipelines.
+
+1. In the AWS Console search bar, type **IAM** and click it
+2. In the left sidebar, click **Users**
+3. Click **Create user** (top right)
+4. Username: `github-actions-user`
+5. Click **Next**
+6. Select **Attach policies directly**
+7. In the search box, search and tick each of these 5 policies:
    - `AmazonEC2FullAccess`
-   - `AmazonECR_FullAccess` (or `AmazonEC2ContainerRegistryFullAccess`)
+   - `AmazonEC2ContainerRegistryFullAccess`
    - `AmazonS3FullAccess`
    - `AmazonDynamoDBFullAccess`
    - `IAMFullAccess`
-5. Create user → Go to user → Security credentials tab
-6. Create access key → Use case: **CLI**
-7. **Save the Access Key ID and Secret Access Key** — you will not see the secret again
+8. Click **Next** → **Create user**
+9. Click on the user you just created (`github-actions-user`)
+10. Go to the **Security credentials** tab
+11. Scroll down to **Access keys** → click **Create access key**
+12. Use case: select **Command Line Interface (CLI)** → tick the confirmation checkbox
+13. Click **Next** → **Create access key**
+14. **CRITICAL: Copy both values now and save them in Notepad:**
+    - Access key ID (looks like: `AKIAIOSFODNN7EXAMPLE`)
+    - Secret access key (looks like: `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`)
+15. Click **Done**
 
-### Step 1.2 — Configure AWS CLI on your machine
+---
 
+### Step 1.3 — Configure AWS CLI on Your Machine
+
+**Why?** This lets you run AWS commands from PowerShell. It stores your credentials
+locally so Terraform can also use them when you run it from your machine.
+
+Open PowerShell and run:
 ```powershell
 aws configure
 ```
 
-Enter when prompted:
+Enter these when prompted (press Enter after each):
 ```
-AWS Access Key ID: <your access key>
-AWS Secret Access Key: <your secret key>
-Default region name: ap-south-1
-Default output format: json
+AWS Access Key ID [None]: PASTE_YOUR_ACCESS_KEY_ID
+AWS Secret Access Key [None]: PASTE_YOUR_SECRET_ACCESS_KEY
+Default region name [None]: ap-south-1
+Default output format [None]: json
 ```
 
-Verify:
+Verify it works:
 ```powershell
 aws sts get-caller-identity
 ```
 
-You should see your account ID, user ID, and ARN.
+Expected output (your values will differ):
+```json
+{
+    "UserId": "AIDAIOSFODNN7EXAMPLE",
+    "Account": "123456789012",
+    "Arn": "arn:aws:iam::123456789012:user/github-actions-user"
+}
+```
 
-### Step 1.3 — Create S3 bucket for Terraform state
+**Save your Account number (12 digits) — you will need it for GitHub secrets.**
 
+---
+
+### Step 1.4 — Create S3 Bucket for Terraform State
+
+**Why?** Terraform needs to store a "state file" that tracks what resources it has
+created. We store this in S3 so the GitHub Actions pipeline can also access it.
+Without this, Terraform would not know that EC2 already exists on the next run.
+
+Run in PowerShell:
 ```powershell
 aws s3api create-bucket `
   --bucket automobile-tfstate-bucket `
   --region ap-south-1 `
   --create-bucket-configuration LocationConstraint=ap-south-1
+```
 
+Expected output:
+```json
+{
+    "Location": "http://automobile-tfstate-bucket.s3.amazonaws.com/"
+}
+```
+
+Enable versioning on the bucket (lets you recover old state files):
+```powershell
 aws s3api put-bucket-versioning `
   --bucket automobile-tfstate-bucket `
   --versioning-configuration Status=Enabled
 ```
 
-### Step 1.4 — Create DynamoDB table for Terraform state locking
+No output = success.
+
+---
+
+### Step 1.5 — Create DynamoDB Table for State Locking
+
+**Why?** When two pipeline runs happen at the same time, both might try to modify
+the Terraform state file simultaneously and corrupt it. DynamoDB acts as a lock —
+only one run can modify state at a time.
 
 ```powershell
 aws dynamodb create-table `
@@ -96,206 +221,401 @@ aws dynamodb create-table `
   --region ap-south-1
 ```
 
-### Step 1.5 — Create EC2 Key Pair
+Expected output: a large JSON block with `"TableStatus": "CREATING"`. That is fine.
+
+---
+
+### Step 1.6 — Create EC2 Key Pair
+
+**Why?** To SSH into your EC2 instance, you need a key pair. The key pair has two
+parts: AWS keeps the public key, you keep the private key (.pem file). The GitHub
+Actions pipeline uses this private key to SSH in and deploy.
 
 ```powershell
+# Create the .ssh directory if it doesn't exist
+New-Item -ItemType Directory -Force -Path "$HOME\.ssh"
+
+# Create the key pair and save the private key
 aws ec2 create-key-pair `
-  --key-name automobile-key `
+  --key-name automobile-app-key `
   --region ap-south-1 `
   --query "KeyMaterial" `
-  --output text | Out-File -FilePath "$HOME\.ssh\automobile-key.pem" -Encoding ascii
+  --output text | Out-File -FilePath "$HOME\.ssh\automobile-app-key.pem" -Encoding ascii
 
-# Fix permissions (PowerShell)
-icacls "$HOME\.ssh\automobile-key.pem" /inheritance:r /grant:r "${env:USERNAME}:R"
+# Fix file permissions so SSH accepts it
+icacls "$HOME\.ssh\automobile-app-key.pem" /inheritance:r
+icacls "$HOME\.ssh\automobile-app-key.pem" /grant:r "${env:USERNAME}:(R)"
 ```
 
-View the private key content (you will need this for GitHub secrets):
+Verify the file was created:
 ```powershell
-Get-Content "$HOME\.ssh\automobile-key.pem"
+Get-Content "$HOME\.ssh\automobile-app-key.pem"
 ```
+
+You should see something like:
+```
+-----BEGIN RSA PRIVATE KEY-----
+MIIEowIBAAKCAQEA0Z3VS5JJcds3xHn/ygWep4PAtEsHAq...
+-----END RSA PRIVATE KEY-----
+```
+
+**Copy the entire output including the BEGIN and END lines — you need this for
+GitHub secrets in Phase 2.**
 
 ---
 
 ## PHASE 2 — GitHub Repository Setup
-
-### Step 2.1 — Create GitHub repository
-
-1. Go to https://github.com/new
-2. Repository name: `automobile-app`
-3. Visibility: **Private** (recommended — contains infra code)
-4. Do NOT initialise with README (we already have code)
-5. Click **Create repository**
-
-### Step 2.2 — Push your code
-
-Open PowerShell in your project folder:
-
-```powershell
-cd path\to\automobile-app
-
-git init
-git add .
-git commit -m "Initial commit: Flask app + Docker + Terraform + CI/CD"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/automobile-app.git
-git push -u origin main
-```
-
-### Step 2.3 — Add GitHub Actions secrets
-
-Go to your repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
-
-Add each of these:
-
-| Secret name | Value |
-|-------------|-------|
-| `AWS_ACCESS_KEY_ID` | From Step 1.1 |
-| `AWS_SECRET_ACCESS_KEY` | From Step 1.1 |
-| `AWS_ACCOUNT_ID` | Run: `aws sts get-caller-identity --query Account --output text` |
-| `EC2_KEY_PAIR_NAME` | `automobile-key` |
-| `EC2_SSH_PRIVATE_KEY` | Full contents of `automobile-key.pem` (including BEGIN/END lines) |
-| `SECRET_KEY` | Any random string e.g. `MyS3cur3Fl@skKey2024!` |
-| `DB_USER` | `automobile_user` |
-| `DB_PASSWORD` | `automobile_pass` |
-| `DB_NAME` | `automobile_db` |
-| `MYSQL_ROOT_PASSWORD` | `rootpassword` |
-
-### Step 2.4 — Create production environment with approval gate
-
-1. Go to repo → **Settings** → **Environments** → **New environment**
-2. Name: `production`
-3. Enable: **Required reviewers**
-4. Add yourself as a reviewer
-5. Click **Save protection rules**
-
-This is the manual approval gate in Job 5 of the pipeline.
+### (Takes about 10 minutes.)
 
 ---
 
-## PHASE 3 — Terraform First Run (provision AWS infrastructure)
+### Step 2.1 — Create a GitHub Repository
 
-You only need to do this once. After this, Terraform runs automatically in the pipeline.
+1. Go to https://github.com and log in
+2. Click the **+** icon (top right) → **New repository**
+3. Fill in:
+   - Repository name: `automobile-app`
+   - Visibility: **Private**
+   - Do NOT tick "Add a README file"
+4. Click **Create repository**
+5. Keep this page open — you will use the URL shown
 
-### Step 3.1 — Initialise Terraform
+---
+
+### Step 2.2 — Extract and Push the Project Code
+
+1. Download and extract `automobile-app.zip` to a folder on your machine
+   (e.g. `C:\Projects\automobile-app`)
+
+2. Open PowerShell and navigate to that folder:
+```powershell
+cd C:\Projects\automobile-app
+```
+
+3. Initialize git and push to GitHub:
+```powershell
+git init
+git add .
+git commit -m "Initial commit: AutoForge app with Docker, Terraform, CI/CD"
+git branch -M main
+git remote add origin https://github.com/YOUR_GITHUB_USERNAME/automobile-app.git
+git push -u origin main
+```
+
+When prompted, enter your GitHub username and password (or personal access token).
+
+**Note:** Replace `YOUR_GITHUB_USERNAME` with your actual GitHub username.
+
+---
+
+### Step 2.3 — Add GitHub Actions Secrets
+
+**Why?** The pipeline needs AWS credentials, SSH keys, and database passwords to
+do its job. We never hardcode these in the code — instead GitHub stores them
+securely and injects them into the pipeline at runtime.
+
+Go to your GitHub repo → **Settings** tab → **Secrets and variables** (left sidebar)
+→ **Actions** → click **New repository secret** for each one below:
+
+---
+
+**Secret 1:**
+- Name: `AWS_ACCESS_KEY_ID`
+- Value: Your access key ID from Step 1.2 (starts with AKIA...)
+
+**Secret 2:**
+- Name: `AWS_SECRET_ACCESS_KEY`
+- Value: Your secret access key from Step 1.2
+
+**Secret 3:**
+- Name: `AWS_ACCOUNT_ID`
+- Value: Your 12-digit AWS account number from Step 1.3
+- Get it by running: `aws sts get-caller-identity --query Account --output text`
+
+**Secret 4:**
+- Name: `EC2_KEY_PAIR_NAME`
+- Value: `automobile-app-key`
+
+**Secret 5:**
+- Name: `EC2_SSH_PRIVATE_KEY`
+- Value: The full contents of your `.pem` file including the BEGIN and END lines
+- Get it: `Get-Content "$HOME\.ssh\automobile-app-key.pem"`
+- Copy everything and paste it as the secret value
+
+**Secret 6:**
+- Name: `SECRET_KEY`
+- Value: Any random string, e.g. `AutoF0rge@SecretKey2024!`
+
+**Secret 7:**
+- Name: `DB_USER`
+- Value: `automobile_user`
+
+**Secret 8:**
+- Name: `DB_PASSWORD`
+- Value: `automobile_pass`
+
+**Secret 9:**
+- Name: `DB_NAME`
+- Value: `automobile_db`
+
+**Secret 10:**
+- Name: `MYSQL_ROOT_PASSWORD`
+- Value: `RootPass@2024`
+
+After adding all 10, your Secrets page should show 10 secrets listed.
+
+---
+
+### Step 2.4 — Create the Production Environment (Approval Gate)
+
+**Why?** Job 5 in the pipeline is a manual approval gate — it pauses and waits for
+you to click Approve before deploying to production. This is a real-world DevOps
+practice to prevent accidental deployments.
+
+1. Go to repo → **Settings** → **Environments** (left sidebar)
+2. Click **New environment**
+3. Name: `production` (must be exactly this — matches the pipeline YAML)
+4. Click **Configure environment**
+5. Under **Deployment protection rules**, tick **Required reviewers**
+6. In the search box, type your GitHub username and select yourself
+7. Click **Save protection rules**
+
+---
+
+## PHASE 3 — Run Terraform From Your Machine
+### (First time only. Takes about 5 minutes.)
+
+**Why run Terraform manually first?** The pipeline also runs Terraform, but before
+the pipeline can run, the ECR repository must exist (to push images to) and the
+S3 backend must be accessible. Running it once manually creates everything cleanly.
+
+---
+
+### Step 3.1 — Open the Terraform folder
 
 ```powershell
-cd terraform
+cd C:\Projects\automobile-app\terraform
+```
+
+### Step 3.2 — Initialise Terraform
+
+```powershell
 terraform init
 ```
 
-Expected output:
+**What this does:** Downloads the AWS provider plugin, connects to your S3 backend,
+and sets up the working directory.
+
+Expected output (last few lines):
 ```
 Initializing the backend...
 Successfully configured the backend "s3"!
-Initializing provider plugins...
+
 Terraform has been successfully initialized!
 ```
 
-### Step 3.2 — Preview what Terraform will create
+If you see an error about the S3 bucket not existing, re-run Step 1.4.
+
+---
+
+### Step 3.3 — Preview what Terraform will create
 
 ```powershell
-terraform plan -var="key_pair_name=automobile-key"
+terraform plan -var="key_pair_name=automobile-app-key"
 ```
 
-You will see a list of resources to be created:
-- `aws_ecr_repository.automobile_app`
-- `aws_ecr_lifecycle_policy.automobile_app`
-- `aws_instance.automobile_app`
-- `aws_security_group.automobile_sg`
-- `aws_iam_role.automobile_ec2_role`
-- `aws_iam_role_policy.automobile_ecr_policy`
-- `aws_iam_instance_profile.automobile_profile`
+**What this does:** Terraform compares what you have in code vs what exists in AWS,
+and shows you exactly what it will create, change, or destroy. Nothing is created yet.
 
-### Step 3.3 — Apply (create infrastructure)
+Look for this at the bottom:
+```
+Plan: 7 to add, 0 to change, 0 to destroy.
+```
+
+The 7 resources are:
+- ECR repository (stores your Docker images)
+- ECR lifecycle policy (auto-deletes old images)
+- EC2 instance (your server — t2.micro, free tier)
+- Security group (firewall rules — ports 22, 80, 5000)
+- IAM role (lets EC2 pull images from ECR)
+- IAM role policy (the actual ECR permissions)
+- IAM instance profile (attaches the role to EC2)
+
+---
+
+### Step 3.4 — Apply (actually create the resources)
 
 ```powershell
-terraform apply -var="key_pair_name=automobile-key"
+terraform apply -var="key_pair_name=automobile-app-key"
 ```
 
-Type `yes` when prompted.
+Terraform will show the plan again and ask:
+```
+Do you want to perform these actions? Enter a value:
+```
 
-Wait 2-3 minutes. At the end you will see:
+Type `yes` and press Enter.
+
+Wait 2-3 minutes. When complete you will see:
 
 ```
+Apply complete! Resources: 7 added, 0 changed, 0 destroyed.
+
 Outputs:
-app_url             = "http://X.X.X.X"
-ec2_public_ip       = "X.X.X.X"
-ec2_public_dns      = "ec2-X-X-X-X.ap-south-1.compute.amazonaws.com"
-ecr_repository_url  = "XXXXXXXXXXXX.dkr.ecr.ap-south-1.amazonaws.com/automobile-app"
+
+app_url             = "http://13.233.xx.xx"
+ec2_public_dns      = "ec2-13-233-xx-xx.ap-south-1.compute.amazonaws.com"
+ec2_public_ip       = "13.233.xx.xx"
 ecr_repository_name = "automobile-app"
+ecr_repository_url  = "123456789012.dkr.ecr.ap-south-1.amazonaws.com/automobile-app"
 ```
 
-**Save the EC2 public IP and ECR repository URL** — you will need these.
+**Save the `ec2_public_ip` value — this is your app URL.**
 
 ---
 
 ## PHASE 4 — Trigger the CI/CD Pipeline
+### (Every deployment starts here.)
 
-### Step 4.1 — Push a change to main
+---
 
-The pipeline triggers on every push to `main`. Make a small change:
+### Step 4.1 — Push to trigger the pipeline
+
+Go back to your project root and make a small change to trigger the pipeline:
 
 ```powershell
-cd ..  # back to project root
+cd C:\Projects\automobile-app
 
-# Edit any file, e.g. add a comment to run.py
-# Then:
+# Open run.py and add a comment, save it, then:
 git add .
-git commit -m "Trigger first deployment"
+git commit -m "Trigger first deployment via CI/CD"
 git push origin main
 ```
 
-### Step 4.2 — Watch the pipeline
+---
 
-1. Go to your GitHub repo → **Actions** tab
-2. You will see the pipeline running: `Automobile App — CI/CD Pipeline`
-3. Click it to see all 6 jobs
+### Step 4.2 — Watch the pipeline run
 
-**Job 1 — Lint & test** (~2 min)
-- Spins up MySQL service container
-- Installs Python dependencies
-- Runs flake8 linter
-- Seeds the database
-- Runs pytest
+1. Go to your GitHub repo in the browser
+2. Click the **Actions** tab
+3. You will see a workflow run called **Automobile App — CI/CD Pipeline**
+4. Click it to open
+5. You will see 6 jobs on the left side
 
-**Job 2 — Docker build** (~3 min)
-- Builds the multi-stage Docker image
-- Saves it as a pipeline artifact
+Here is what each job does and how long it takes:
 
-**Job 3 — Push to ECR** (~1 min)
-- Logs into ECR using your AWS credentials
-- Tags image as `:latest` and `:sha-XXXXXXX`
+---
+
+**Job 1 — Lint & test** (~2-3 minutes)
+
+What happens:
+- GitHub spins up a fresh Ubuntu machine
+- Installs Python 3.11
+- Starts a MySQL container as a service
+- Installs all your Python packages from requirements.txt
+- Runs `flake8` to check for code style errors
+- Runs `python seed.py` to verify the DB connection works
+- Runs pytest (skips gracefully if no tests folder)
+
+What you should see: green tick ✓
+
+---
+
+**Job 2 — Docker build** (~3-4 minutes)
+
+What happens:
+- Uses Docker Buildx (advanced builder)
+- Runs Stage 1 of your Dockerfile (installs gcc, compiles packages)
+- Runs Stage 2 (copies only the venv into a clean slim image)
+- Saves the built image as a `.tar` file (pipeline artifact)
+- Caches Docker layers so next build is faster
+
+What you should see: green tick ✓
+
+---
+
+**Job 3 — Push to ECR** (~1 minute)
+
+What happens:
+- Downloads the `.tar` image artifact from Job 2
+- Logs into your ECR registry using AWS credentials
+- Tags the image with two tags:
+  - `:latest` (always points to newest build)
+  - `:sha-abc1234` (specific to this git commit — for rollbacks)
 - Pushes both tags to ECR
 
-**Job 4 — Terraform apply** (~2 min)
-- Runs `terraform init` and `terraform apply`
-- Updates infra if anything changed
-- Outputs EC2 IP for the deploy job
+What you should see: green tick ✓
+
+---
+
+**Job 4 — Terraform apply** (~2 minutes)
+
+What happens:
+- Downloads Terraform
+- Runs `terraform init` (connects to your S3 backend)
+- Runs `terraform plan` (checks if infra needs changes)
+- Runs `terraform apply` (updates infra if needed)
+- Outputs the EC2 IP for Job 6 to use
+
+Since you already ran Terraform manually in Phase 3, this will likely show:
+`0 to add, 0 to change, 0 to destroy` — which is correct and fast.
+
+What you should see: green tick ✓
+
+---
 
 **Job 5 — Manual approval** (PAUSED — waiting for you)
-- Pipeline pauses here
-- You will receive an email from GitHub
-- Go to Actions → click the pipeline → click **Review deployments**
-- Select `production` → click **Approve and deploy**
 
-**Job 6 — Deploy to EC2** (~2 min)
-- SSHs into EC2
-- Writes the `.env` file
-- Logs into ECR from the EC2 instance
-- Pulls the new Docker image
-- Runs `docker compose up -d`
-- Runs a smoke test on `/auth/login`
-- Prints the deployment summary
+The pipeline stops here. You will see an orange hourglass icon.
 
-### Step 4.3 — Verify the deployment
+GitHub will send you an email saying "Your review is requested."
 
-After Job 6 completes successfully:
+To approve:
+1. Click the email link OR go to Actions → click the running workflow
+2. You will see a yellow banner: **"This workflow is waiting for your review"**
+3. Click **Review deployments**
+4. Tick the `production` checkbox
+5. Click **Approve and deploy**
 
-1. Open your browser
-2. Go to `http://YOUR_EC2_PUBLIC_IP`
-3. You should see the AutoForge login page
+The pipeline continues immediately.
 
-Login with:
+---
+
+**Job 6 — Deploy to EC2** (~3-4 minutes)
+
+What happens:
+1. Saves your SSH private key to the runner's filesystem
+2. Waits for EC2 SSH to be available (retries every 15 seconds, up to 20 times)
+3. Copies `docker-compose.prod.yml` to `/opt/automobile-app/` on EC2
+4. SSHs into EC2 and runs these commands:
+   - Logs into ECR from EC2 using the instance IAM role (no credentials needed)
+   - Writes the `.env` file with all your secrets
+   - Runs `docker pull` to get the new image
+   - Runs `docker compose down` then `docker compose up -d`
+   - Waits 30 seconds for containers to start
+5. Runs a smoke test: hits `http://EC2_IP/auth/login` and checks for HTTP 200
+6. Prints the deployment summary
+
+What you should see: green tick ✓ and a summary like:
+```
+================================================
+  Deployment successful!
+  App URL : http://13.233.xx.xx
+  Image   : 123456789012.dkr.ecr.ap-south-1.amazonaws.com/automobile-app:sha-abc1234
+  Commit  : abc1234...
+  Actor   : your-github-username
+================================================
+```
+
+---
+
+### Step 4.3 — Open the app in your browser
+
+Go to: `http://YOUR_EC2_PUBLIC_IP`
+
+You will see the AutoForge login page.
+
+Login credentials:
 - Username: `admin`
 - Password: `Admin@123`
 
@@ -303,105 +623,134 @@ Login with:
 
 ## PHASE 5 — Using the Application
 
-### What you can do as admin
+### As admin you can:
 
-**Dashboard** — overview of vehicles, orders, pending orders, users
+**Dashboard** — see total vehicles, orders, pending orders, registered users
 
-**Vehicles** (admin only)
-- Add new vehicles with make, model, year, category, price, stock
-- Edit existing vehicles
-- Delete vehicles
+**Vehicles** → Add vehicle
+- Make: Toyota, Model: Fortuner, Year: 2024
+- Category: SUV, Price: 45000, Stock: 10
+- Click Save vehicle
 
-**Orders**
-- As admin: see all orders, update order status
-- As regular user: place orders, view own orders
+**Vehicles** → each row has Order, Edit, Delete buttons
 
-### Add a regular user
+**Orders** → see all orders placed, click Update to change status
+(pending → confirmed → in_production → shipped → delivered)
 
-1. Log out
-2. Go to `/auth/register`
-3. Create a new account
-4. Log in and place an order
+### Create a test regular user:
+
+1. Log out (top right)
+2. Go to `http://YOUR_EC2_IP/auth/register`
+3. Register with a new username and email
+4. Log in as that user
+5. Go to Vehicles → click Order on any vehicle
+6. Enter quantity → Place order
+7. Log back in as admin → Orders → you will see the order
 
 ---
 
-## PHASE 6 — Every Subsequent Deployment
+## PHASE 6 — Every Future Deployment
 
-For every change after the first deployment, just:
+For every code change after this:
 
 ```powershell
-# Make your code changes
+# Make your changes to any file
 git add .
-git commit -m "Your change description"
+git commit -m "Describe what you changed"
 git push origin main
 ```
 
-The pipeline runs automatically → approve at Job 5 → live in ~10 minutes.
+Then:
+1. Go to GitHub Actions — watch the pipeline
+2. Approve at Job 5
+3. App is updated in ~10 minutes
+
+That is the full DevOps loop.
 
 ---
 
 ## Troubleshooting
 
-### Pipeline fails at Job 1 (lint)
+### "Error: S3 bucket does not exist" during terraform init
+Re-run Step 1.4. Make sure the bucket name in `terraform/providers.tf` matches
+exactly: `automobile-tfstate-bucket`
 
-Check the flake8 output. Usually a line too long (>120 chars) or unused import.
+### Job 1 fails — flake8 error
+Look at the error message. It will say something like:
+`app/routes/auth.py:34:121: E501 line too long (125 > 120 characters)`
+Open that file, find line 34, shorten it. Push again.
 
-### Pipeline fails at Job 3 (ECR push)
+### Job 3 fails — ECR push error
+- Check `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` secrets are correct
+- Check `AWS_ACCOUNT_ID` is your 12-digit account number (no spaces, no dashes)
+- Make sure your IAM user has `AmazonEC2ContainerRegistryFullAccess`
 
-Verify your `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` secrets are correct.
-Check that your IAM user has `AmazonEC2ContainerRegistryFullAccess`.
+### Job 4 fails — Terraform state error
+Usually because the S3 bucket or DynamoDB table does not exist.
+Re-run Steps 1.4 and 1.5 from your machine, then retry the pipeline.
 
-### Pipeline fails at Job 4 (Terraform)
+### Job 6 fails — SSH Connection timeout
+EC2 was just created and is still running `user_data.sh` (installing Docker).
+This takes 3-5 minutes on first boot. The pipeline retries 20 times (5 minutes
+total) — if it still fails, go to Actions, click Job 6, and click "Re-run job".
 
-Common causes:
-- S3 bucket name mismatch — check `terraform/providers.tf` bucket name matches Step 1.3
-- DynamoDB table not created — re-run Step 1.4
-- `EC2_KEY_PAIR_NAME` secret doesn't match the key pair name in AWS
-
-### Pipeline fails at Job 6 (deploy — SSH timeout)
-
-EC2 was just created and Docker is still installing via user_data.
-Wait 3-5 minutes and re-run just Job 6 from the Actions UI.
-
-### App shows 502 / can't connect after deploy
-
-SSH into EC2 and check container status:
-
+### App shows "502 Bad Gateway" or can't connect
+SSH into EC2 to debug:
 ```powershell
-ssh -i "$HOME\.ssh\automobile-key.pem" ubuntu@YOUR_EC2_IP
+ssh -i "$HOME\.ssh\automobile-app-key.pem" ubuntu@YOUR_EC2_IP
 ```
 
 On EC2:
 ```bash
 cd /opt/automobile-app
-docker compose ps
-docker compose logs automobile-app --tail=50
-docker compose logs automobile-db --tail=30
+docker compose ps          # see if containers are running
+docker compose logs automobile-app --tail=50   # Flask logs
+docker compose logs automobile-db --tail=30    # MySQL logs
 ```
 
-### Containers keep restarting
-
-Usually a DB connection issue. Check:
+Common cause: MySQL takes ~30s to initialise on first start. If Flask started
+before MySQL was ready, restart the app container:
 ```bash
-docker compose logs automobile-app | grep "OperationalError\|Can't connect"
+docker compose restart automobile-app
 ```
 
-MySQL takes ~30s to be ready. The healthcheck handles this — if it's failing, check your DB_ environment variables in the `.env` on EC2.
+### Out of memory — containers crashing
+Check memory usage:
+```bash
+free -h
+docker stats --no-stream
+```
+
+If MySQL is using too much:
+```bash
+docker compose down
+docker compose up -d
+```
+
+The `--innodb-buffer-pool-size=128M` setting in docker-compose.prod.yml
+limits MySQL to 128MB. The 1GB swap we added in user_data.sh handles spikes.
 
 ---
 
-## Cost Estimate (ap-south-1)
+## Tearing Down (to avoid any charges)
 
-| Resource | Cost |
-|----------|------|
-| EC2 t3.micro | ~$8/month |
-| ECR storage (5 images) | ~$0.10/month |
-| S3 (tfstate) | ~$0.01/month |
-| DynamoDB (on-demand) | ~$0/month (tiny usage) |
-| **Total** | **~$8-9/month** |
+When you want to stop the project and make sure nothing is running:
 
-To stop costs: `terraform destroy -var="key_pair_name=automobile-key"`
-This deletes EC2 and ECR but keeps the S3 state so you can recreate later.
+```powershell
+cd C:\Projects\automobile-app\terraform
+terraform destroy -var="key_pair_name=automobile-app-key"
+```
+
+Type `yes` when prompted.
+
+This deletes: EC2, ECR, Security Group, IAM role, IAM policy, IAM instance profile.
+It does NOT delete: S3 bucket, DynamoDB table (cost is negligible, keeps your state).
+
+To also delete S3 and DynamoDB:
+```powershell
+aws s3 rb s3://automobile-tfstate-bucket --force
+aws dynamodb delete-table --table-name automobile-tfstate-lock --region ap-south-1
+```
 
 ---
 
@@ -409,53 +758,77 @@ This deletes EC2 and ECR but keeps the S3 state so you can recreate later.
 
 ```
 automobile-app/
-├── app/
-│   ├── __init__.py          # Flask app factory, registers extensions + blueprints
-│   ├── models.py            # SQLAlchemy models: User, Vehicle, Order
-│   ├── forms.py             # WTForms: Login, Register, Vehicle, Order, Status
-│   ├── routes/
-│   │   ├── auth.py          # /auth/login, /auth/logout, /auth/register
-│   │   ├── dashboard.py     # / (stats overview)
-│   │   ├── vehicles.py      # /vehicles/ CRUD
-│   │   └── orders.py        # /orders/ place + manage
-│   ├── templates/           # Jinja2 HTML templates (dark theme)
-│   └── static/css/          # Dark industrial CSS
-├── config.py                # Dev/production Flask config, reads from .env
-├── run.py                   # Gunicorn entry point
-├── seed.py                  # Creates admin user + 5 sample vehicles
-├── requirements.txt         # Pinned Python dependencies
-├── Dockerfile               # Multi-stage: builder (gcc) + runtime (slim)
-├── .dockerignore            # Excludes .git, venv, terraform from image
-├── docker-compose.yml       # Local dev (not used in this deployment)
-├── docker-compose.prod.yml  # EC2 production: app + db + volumes + network
-├── .env.example             # Template — copy to .env and fill values
-├── .gitignore               # Excludes .env, .terraform, __pycache__
-├── terraform/
-│   ├── providers.tf         # AWS provider + S3 remote backend config
-│   ├── variables.tf         # Region, instance type, AMI, key pair name
-│   ├── ecr.tf               # ECR repo + lifecycle policy (keep 5 images)
-│   ├── security_group.tf    # Ports 22 (SSH), 80 (HTTP), 5000 (Flask)
-│   ├── iam.tf               # EC2 instance role with ECR pull permission
-│   ├── ec2.tf               # Single t3.micro with user_data bootstrap
-│   ├── outputs.tf           # EC2 IP, ECR URL, app URL
-│   └── user_data.sh         # Installs Docker + Docker Compose + AWS CLI
+│
+├── DEPLOYMENT_GUIDE.md          ← You are reading this
+│
+├── app/                         ← Flask application code
+│   ├── __init__.py              ← App factory (creates Flask app, registers blueprints)
+│   ├── models.py                ← Database tables: User, Vehicle, Order
+│   ├── forms.py                 ← Form definitions: Login, Register, Vehicle, Order
+│   └── routes/
+│       ├── auth.py              ← /auth/login, /auth/logout, /auth/register
+│       ├── dashboard.py         ← / (homepage with stats)
+│       ├── vehicles.py          ← /vehicles/ (list, add, edit, delete)
+│       └── orders.py            ← /orders/ (place, list, update status)
+│
+├── app/templates/               ← HTML pages (Jinja2)
+│   ├── base.html                ← Master layout (navbar, flash messages)
+│   ├── auth/login.html          ← Login page
+│   ├── auth/register.html       ← Register page
+│   ├── dashboard/index.html     ← Dashboard with stat cards
+│   ├── vehicles/index.html      ← Vehicle list table
+│   ├── vehicles/form.html       ← Add/edit vehicle form
+│   ├── orders/index.html        ← Orders list table
+│   ├── orders/place.html        ← Place order form
+│   └── orders/update.html       ← Update order status form
+│
+├── app/static/css/style.css     ← Dark industrial theme CSS
+│
+├── config.py                    ← Flask config (reads from .env file)
+├── run.py                       ← Entry point (gunicorn runs this)
+├── seed.py                      ← Creates admin user + 5 sample vehicles on startup
+├── requirements.txt             ← Python packages (Flask, SQLAlchemy, PyMySQL...)
+│
+├── Dockerfile                   ← Two-stage build:
+│                                   Stage 1 (builder): installs gcc, compiles packages
+│                                   Stage 2 (runtime): copies only venv, runs gunicorn
+│
+├── .dockerignore                ← Files excluded from Docker image (.git, venv, etc)
+├── docker-compose.yml           ← Local development (not used in AWS deployment)
+├── docker-compose.prod.yml      ← Production: Flask + MySQL + network + volumes
+├── .env.example                 ← Template showing what .env should look like
+├── .gitignore                   ← Files git should not track (.env, .terraform, etc)
+│
+└── terraform/
+    ├── providers.tf             ← AWS provider config + S3 remote backend
+    ├── variables.tf             ← t2.micro, ap-south-1, automobile-app-key
+    ├── ecr.tf                   ← ECR private repo + lifecycle policy (keep 5 images)
+    ├── security_group.tf        ← Firewall: allow ports 22, 80, 5000
+    ├── iam.tf                   ← EC2 role that can pull from ECR (no credentials needed)
+    ├── ec2.tf                   ← t2.micro instance, gp2 20GB, free tier
+    ├── outputs.tf               ← Prints EC2 IP and ECR URL after apply
+    └── user_data.sh             ← Runs on EC2 first boot:
+                                    - Creates 1GB swap (critical for t2.micro)
+                                    - Installs Docker + Docker Compose
+                                    - Installs AWS CLI v2
+
 └── .github/workflows/
-    └── deploy.yml           # 6-job CI/CD pipeline
+    └── deploy.yml               ← 6-job CI/CD pipeline (the heart of this project)
 ```
 
 ---
 
-## GitHub Secrets Quick Reference
+## GitHub Secrets Quick Reference Card
 
-| Secret | Where to get it |
-|--------|----------------|
-| `AWS_ACCESS_KEY_ID` | IAM → Users → github-actions-user → Security credentials |
-| `AWS_SECRET_ACCESS_KEY` | Same as above (save on creation) |
-| `AWS_ACCOUNT_ID` | `aws sts get-caller-identity --query Account --output text` |
-| `EC2_KEY_PAIR_NAME` | `automobile-key` |
-| `EC2_SSH_PRIVATE_KEY` | Contents of `automobile-key.pem` |
-| `SECRET_KEY` | Any random string |
-| `DB_USER` | `automobile_user` |
-| `DB_PASSWORD` | `automobile_pass` |
-| `DB_NAME` | `automobile_db` |
-| `MYSQL_ROOT_PASSWORD` | `rootpassword` |
+| Secret Name          | Where to Get It                                              |
+|----------------------|--------------------------------------------------------------|
+| AWS_ACCESS_KEY_ID    | IAM → Users → github-actions-user → Security credentials    |
+| AWS_SECRET_ACCESS_KEY| Same (save when created — shown only once)                  |
+| AWS_ACCOUNT_ID       | `aws sts get-caller-identity --query Account --output text` |
+| EC2_KEY_PAIR_NAME    | `automobile-app-key`                                        |
+| EC2_SSH_PRIVATE_KEY  | `Get-Content "$HOME\.ssh\automobile-app-key.pem"`           |
+| SECRET_KEY           | Any random string                                           |
+| DB_USER              | `automobile_user`                                           |
+| DB_PASSWORD          | `automobile_pass`                                           |
+| DB_NAME              | `automobile_db`                                             |
+| MYSQL_ROOT_PASSWORD  | `RootPass@2024`                                             |
