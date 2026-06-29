@@ -36,7 +36,7 @@ terraform --version
 
 ## PHASE 1 — AWS Account Setup (do this once, manually)
 
-### Step 1.1 — Create IAM user for GitHub Actions
+### Step 1.1 — Create IAM user for GitHub Actions..................
 
 1. Open AWS Console → IAM → Users → Create user
 2. Username: `github-actions-user`

@@ -16,7 +16,7 @@ RUN python -m venv /build/venv && \
     /build/venv/bin/pip install --no-cache-dir -r requirements.txt
 
 
-# ── Stage 2: runtime ──────────────────────────────────────────────────────────
+# ── Stage 2: runtime ─────────────────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
