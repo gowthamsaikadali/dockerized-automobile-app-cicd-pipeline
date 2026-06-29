@@ -1,7 +1,9 @@
 import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
+
 
 class Config:
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-change-in-prod")
@@ -15,8 +17,11 @@ class Config:
     DB_NAME = os.environ.get("DB_NAME", "automobile_db")
 
     SQLALCHEMY_DATABASE_URI = (
-        f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}"
-        f"@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+        f"mysql+pymysql://{os.environ.get('DB_USER', 'automobile_user')}"
+        f":{os.environ.get('DB_PASSWORD', 'automobile_pass')}"
+        f"@{os.environ.get('DB_HOST', 'automobile-db')}"
+        f":{os.environ.get('DB_PORT', '3306')}"
+        f"/{os.environ.get('DB_NAME', 'automobile_db')}"
     )
 
 
