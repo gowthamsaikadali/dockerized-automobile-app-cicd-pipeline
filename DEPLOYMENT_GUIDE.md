@@ -29,7 +29,7 @@ App is live at http://YOUR_EC2_IP
 
 ---
 
-## Free Tier Resources Used
+## Free Tier Resources Used   -------
 
 | AWS Resource     | Free Tier Limit          | What We Use      |
 |------------------|--------------------------|------------------|
